@@ -99,11 +99,20 @@ def collect() -> tuple[list[tuple[Path, str]], list[tuple[Path, str]]]:
     excluded: list[tuple[Path, str]] = []
 
     # 根目录的单个 md（00_课程总纲.md）→ docs/index.md
+    #
+    # ⚠️ 仓库根目录的 README.md **不进站点** ——
+    #    mkdocs-material 把 docs/README.md 当成 index.md 的替代品，
+    #    两者同时存在会报 "Excluding 'README.md' from the site because it
+    #    conflicts with 'index.md'"，--strict 直接失败（踩过）。
+    #    仓库 README 讲的是"这个仓库怎么用"，站点首页讲的是"这门课是什么"。
+    ROOT_MD_SKIP = {'README.md'}
     for p in sorted(ROOT.glob('*.md')):
         rel = p.relative_to(ROOT)
         reason = classify(rel)
         if reason:
             excluded.append((rel, reason))
+        elif p.name in ROOT_MD_SKIP:
+            excluded.append((rel, '仓库 README（不是课程内容；且会与 index.md 冲突）'))
         elif p.name == '00_课程总纲.md':
             kept.append((rel, 'index.md'))
         else:

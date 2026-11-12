@@ -52,9 +52,14 @@ jobs:
       - name: 同步 docs/ 并校验是否最新
         run: |
           python sync_docs.py
-          if ! git diff --exit-code --quiet docs/; then
+          # ⚠️ 用 git status 而不是 git diff ——
+          #    git diff 只看**已跟踪**文件的修改，查不出**新增**的未跟踪文件。
+          #    踩过：sync 把根目录 README.md 复制成 docs/README.md（新文件），
+          #    git diff --exit-code 查不出来 → 同步闸放行 → 构建才炸。
+          if [ -n "$(git status --porcelain -- docs/)" ]; then
             echo "::error::docs/ 与源目录不同步。请在本地跑 python sync_docs.py 后再提交。"
-            git --no-pager diff --stat docs/ | tail -20
+            git status --porcelain -- docs/ | head -20
+            git --no-pager diff --stat -- docs/ | tail -10
             exit 1
           fi
           echo "docs/ 与源目录一致"

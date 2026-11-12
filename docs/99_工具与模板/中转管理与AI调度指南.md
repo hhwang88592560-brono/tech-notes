@@ -336,16 +336,93 @@ python 99_工具与模板\verify.py 01_C语言核心\任务_02_xxx.out.md
 
 ---
 
-## 9. 现在还剩什么（待你决定）
+## 9. ★ 统一换站器（2026-11-12 新增，回答"任意 app 都能换"）
+
+> 详细手册：`D:\RectSSL_AIRD_Quality_20261027_v4\agentrouter_switch_20261109\RELAY.md`
+
+以前换站是"一个 app 一套脚本"（Codex 有 `relay_switch.py`，Claude Code 靠另存一份
+`settings.json`，网关要手动重启，magpie 又是另一套）——
+**"想换个站"本身成了负担**。
+
+现在是一条命令，**不管你在哪个 agent app 里**：
+
+```bash
+relay status          # 所有 app 现在在哪
+relay sites           # 有哪些站、各自支持哪些 app、为什么
+relay use <site>      # 切换所有支持的 app
+relay use <site> --only codex,claude
+relay doctor          # 自检
+```
+
+`relay` 已在 PATH（`C:\Users\18798\.relay\bin\relay.cmd`），
+并做成 skill `relay-station`（通过 junction 给 Codex 和 Claude Code **共用一份**）。
+
+### 9.1 站 × app 的支持矩阵 —— **这张表比切换功能更值钱**
+
+| 站 | Codex | Claude Code | 网关适配器 | magpie |
+|---|---|---|---|---|
+| `agentrouter` | ✔ | ✔ | ✔ | ✔ |
+| `pincar` | ✔ | ✘ 403 官方客户端指纹限制 | ✘ 同左 | ✔ |
+| `local-minimax` | ✘ 只讲 Anthropic 形状 | ✔ | ✘ 不需要 | ✘ |
+| `google` | ✘ 没有 `/responses` 端点 | ✘ 没有 Anthropic 端点 | ✘ 同左 | ✘ 收益不大 |
+
+**为什么每条都要写"为什么"**：这样一眼能看出**该用哪个站**，
+而不是只知道"这个不行"。比如"Claude Code 只能走 agentrouter 或本机代理"
+是硬约束（pincar 的指纹校验），不是配置没调好。
+
+### 9.2 ★ 两条腿：为什么有的站必须用真实 Codex 客户端
+
+```
+Codex       ──→ Codex 原生（Responses API）──→ agentrouter / pincar
+Claude Code ──→ 你的网关适配器 (18146) ──→ agentrouter / pincar / google(待改造)
+dispatch.py ──→ transport: codex | http ──→ 各站的 (站 × 模型) 池
+```
+
+**中转站会校验客户端指纹**（pincar 对普通 HTTP 客户端返 403
+`This account only allows Codex official clients`）⇒ `dispatch.py` 必须走
+`codex exec --profile X`，不能直接发 HTTP。
+
+**但 Google 不校验指纹**，而且它提供 OpenAI 兼容的 `/chat/completions`
+（只是**没有** `/responses`）⇒ 给 `dispatch.py` 加 `transport: 'http'` 就能接。
+
+```python
+{'name': 'google', 'transport': 'http',
+ 'base_url': 'https://generativelanguage.googleapis.com/v1beta/openai',
+ 'api_key_env': 'GEMINI_API_KEY',
+ 'profiles': [('gemini-3.8-flash', None), ('gemini-2.5-pro', None)]},
+```
+
+**没有 `GEMINI_API_KEY` 就自动跳过**（`site_ready()`），
+不给每次任务白烧一个重试位。详见 `谷歌渠道调研与使用指南.md`。
+
+### 9.3 换站的三个安全性质（都实测过）
+
+| 性质 | 保证方式 | 验证 |
+|---|---|---|
+| 往返无损 | 只改该改的行 + **保持原行尾** | 切过去再切回来 `cmp` 逐字节相同 ✔ |
+| 不丢线程 | Codex 侧 provider id 恒为 `relay` | 352 线程迁移后照常打开 ✔ |
+| 可回退 | 每次改前自动备份 | `switch_backups/relay_unified/` |
+
+> ⚠️ **行尾坑**：Codex 的 `config.toml` 是**纯 LF**。
+> Python 的 `write_text()` 默认把 `\n` 转成 CRLF ⇒ 494 行全变。
+> `relay.py` 会检测并保持原行尾。
+
+---
+
+## 10. 现在还剩什么（待你决定）
 
 | # | 事项 | 谁做 |
 |---|---|---|
 | 1 | 装 All API Hub 扩展 | 你点商店链接 |
 | 2 | 把两个站加进扩展 | 浏览器登录后加 |
 | 3 | 开 2~3 个新站 | 你注册 |
-| 4 | 把新站接进调度器 | 我改 `dispatch.py` 的 SITES |
-| 5 | **关掉一次 Codex 桌面端** | 你 —— 归一任务会自动执行 |
-| 6 | 继续蒸馏下一课 | 我，用 dispatch.py |
+| 4 | **申请一个 Google AI Studio key（土区账号）** | 你 —— 之后 Google 就能当 `dispatch.py` 的第三条腿 |
+| 5 | 把 Claude Code 也切到 agentrouter | 你 —— 换完要重启 Claude Code |
+| 6 | 装 magpie | 你 —— 装完 `relay use <站>` 会自动导入 |
+| 7 | 继续蒸馏下一课 | 我，用 dispatch.py |
+
+**已完成**：Codex 归一（换站待执行任务已于 2026-11-12 自动执行）、
+统一换站器、Pages 站点上线、本地模型接线。
 
 ---
 

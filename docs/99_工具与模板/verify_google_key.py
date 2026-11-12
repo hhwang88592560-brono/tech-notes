@@ -2,11 +2,16 @@ r"""verify_google_key.py - 拿到 Gemini key 之后，5 分钟验完全部前提
 
 它回答四个问题，每个都对应一个独立的失败原因：
 
-  1. 出口地区在不在 Gemini API 的支持列表里？
-     （判定依据是**请求源 IP**，不是账号注册地）
+  1. 通用出口在哪（★ 仅参考 —— 不是地区判据，见下）
   2. key 有效吗？（2026-05-28 之后创建的是 "auth key"，旧式 key 会被拒）
   3. 哪些模型可用？哪些在免费层里？
   4. OpenAI 兼容层真的能出活吗？（这是 dispatch.py 要用的路径）
+
+★ **地区的真正判据是 API 自己的响应**，不是第 1 步查到的 IP：
+  - 返回 `FAILED_PRECONDITION / User location is not supported` ⇒ **出口地区不支持**
+  - 返回 `INVALID_ARGUMENT / API key not valid` ⇒ key 的问题（Google 先验 key 再验地区）
+第 1 步查的是**非 Google 域名**的出口，可能和 Google 域名的分流出口不同
+（本机就是：通用走香港，Google 域名走日本），**拿它判地区会判错**。
 
 用法：
     python verify_google_key.py                 # 从环境变量 GEMINI_API_KEY 读
@@ -84,18 +89,19 @@ def main() -> int:
         return 2
     print(f'  key     : {key[:6]}...{key[-4:]}  ({len(key)} 字符)')
 
-    # ---- 1. 出口地区 --------------------------------------------------
-    print('\n[1/4] 出口地区')
+    # ---- 1. 通用出口（仅参考，不是判定依据） ----------------------------
+    print('\n[1/4] 通用出口（★ 仅参考 —— 真正判定在第 2/3 步）')
     st, body = get('https://ifconfig.co/json', {'User-Agent': 'curl/8'}, proxy)
     if st == 200:
         try:
             d = json.loads(body)
             cc = d.get('country_iso')
-            print(f'  IP={d.get("ip")}  地区={cc} {d.get("country")}')
-            print(f'  ⚠ Google 支持列表里：土耳其/新加坡/日本/美国… **不含中国大陆与香港**')
-            if cc in ('CN', 'HK'):
-                print(f'  ⇒ 当前出口（{cc}）**不在 Gemini API 支持列表**，'
-                      '换节点或换出口再继续')
+            print(f'  通用出口 IP={d.get("ip")}  地区={cc} {d.get("country")}')
+            print('  ⚠ 这是**非 Google 域名**的出口。Google 域名走的是 Clash 的')
+            print('     专用分流（RuleSet(gemini) / googleapis.com），出口可能不同。')
+            print('     ⇒ 拿这里的国家去判 Gemini 的地区可行性会判错。')
+            print('     真正的判定：第 2/3 步若返回')
+            print('     "User location is not supported" 才是地区问题。')
         except Exception:
             print('  (拿不到地区信息，继续)')
     else:

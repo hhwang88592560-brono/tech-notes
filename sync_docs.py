@@ -70,7 +70,13 @@ EXCLUDE_FILE_NAMES = {
 }
 EXCLUDE_SUFFIXES = {'.exe', '.pyc', '.o', '.obj', '.log', '.db', '.sqlite3'}
 # 源目录里其它要带上的文件类型：代码、示例
-KEEP_SUFFIXES = {'.md', '.c', '.h', '.json', '.txt', '.py', '.ps1', '.cmd'}
+KEEP_SUFFIXES = {'.md', '.c', '.h', '.json', '.txt', '.py', '.ps1', '.cmd',
+                 '.js', '.css', '.svg', '.png'}
+
+# 根目录的静态资源目录 → docs/ 下的同名位置
+# ⚠️ docs/ 会被 sync_docs.py 每次清空重建，所以**任何要发布的东西
+#    必须住在源目录里**，直接往 docs/ 放会被无声删掉（这个坑踩过）。
+ROOT_ASSET_DIRS = ['assets']
 
 
 def classify(rel: Path) -> str | None:
@@ -102,6 +108,25 @@ def collect() -> tuple[list[tuple[Path, str]], list[tuple[Path, str]]]:
             kept.append((rel, 'index.md'))
         else:
             kept.append((rel, p.name))
+
+    # 根目录的静态资源目录（assets/ 等）→ docs/ 下**同名**位置
+    # ⚠️ 必须保留 asset_dir 这一层前缀：mkdocs 的 extra_javascript
+    #    是相对 docs_dir 解析的，页面里引用的路径要和文件位置对得上。
+    #    （漏掉前缀 ⇒ 21 条断链，这个坑踩过。）
+    for asset_dir in ROOT_ASSET_DIRS:
+        base = ROOT / asset_dir
+        if not base.is_dir():
+            continue
+        for p in sorted(base.rglob('*')):
+            if p.is_dir():
+                continue
+            rel = p.relative_to(ROOT)
+            reason = classify(rel)
+            if reason:
+                excluded.append((rel, reason))
+                continue
+            dest = Path(asset_dir) / p.relative_to(base)
+            kept.append((rel, dest.as_posix()))
 
     for src_dir, dst_dir in SECTIONS.items():
         base = ROOT / src_dir

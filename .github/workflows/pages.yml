@@ -1,0 +1,82 @@
+# ============================================================
+# GitHub Pages 自动发布
+#
+# 流程：推 main → 同步 docs/ → 校验同步 → 构建（--strict）→ 站点自检 → 部署
+#
+# ★ 两道闸（都是"宁可不发也不发坏的"）：
+#   1. mkdocs build --strict  —— markdown 层面的断链/警告一律失败
+#   2. python check_site.py    —— 产物层面：628 条内部链接、编译产物、
+#                                 首页三件套、代码高亮、sitemap
+#
+# ★ 还有一道"同步闸"：docs/ 必须和源目录一致。
+#   忘了跑 sync_docs.py 就提交 ⇒ CI 直接失败并告诉你本地要跑什么。
+#   这比"发了再说"可靠 —— 站点内容永远和源一致。
+# ============================================================
+name: deploy pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:          # 手动也能重跑
+
+permissions:
+  contents: read              # 只读代码
+  pages: write                # 部署 Pages 需要
+  id-token: write             # Pages 部署的鉴权
+
+concurrency:
+  group: pages
+  cancel-in-progress: true    # 新推送取消旧部署，避免互相覆盖
+
+env:
+  NO_MKDOCS_2_WARNING: "1"    # 屏蔽 material 的 EOL 提示（不是构建问题）
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 装 mkdocs
+        run: pip install mkdocs mkdocs-material
+
+      - name: 配置 Pages
+        uses: actions/configure-pages@v5
+
+      - name: 同步 docs/ 并校验是否最新
+        run: |
+          python sync_docs.py
+          if ! git diff --exit-code --quiet docs/; then
+            echo "::error::docs/ 与源目录不同步。请在本地跑 python sync_docs.py 后再提交。"
+            git --no-pager diff --stat docs/ | tail -20
+            exit 1
+          fi
+          echo "docs/ 与源目录一致"
+
+      - name: 构建（--strict 当质量闸）
+        run: python -m mkdocs build --strict
+
+      - name: 站点自检（产物层面的第二道闸）
+        run: python check_site.py
+
+      - name: 上传产物
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build                # 构建失败就不会部署
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 部署到 GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

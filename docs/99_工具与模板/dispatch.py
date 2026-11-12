@@ -77,15 +77,38 @@ SHARED_EFFORT = 'max'
 # The model order inside a site is fixed (astra first, sol second) so that
 # "the same asking method" is preserved: the shared model is preferred, and
 # gpt-6.1-sol is only used when the shared model's pool is empty.
+#
+# ★ transport: 每站可以用不同的传输方式 ★
+#   'codex' —— 走真实 Codex 客户端（codex exec --profile X）。
+#              ★ 必须这样 because 中转站会**校验客户端指纹**：
+#              pincar 对普通 HTTP 客户端返 403
+#              'This account only allows Codex official clients'。
+#   'http'  —— 走 OpenAI SDK 的 chat.completions（普通 HTTP）。
+#              用于**不校验指纹**的官方渠道，比如 Google Gemini 的
+#              OpenAI 兼容层 https://generativelanguage.googleapis.com/v1beta/openai/
+#              （它没有 /responses 端点，所以**不能**接进 Codex 那条腿，
+#                但正好能接这条批量蒸馏的腿）。
+#
+# ★ 额度是按 (站 × 模型) 分池的 —— 所以故障转移要遍历 (站, 模型) 对，
+#   而不只是站（2026-11-11 实测：同一站可以 gpt-6.1-sol 正常、gpt-6-astra 402）。
 SITES = [
-    {'name': 'agentrouter', 'provider': 'agentrouter_main_20261109',
+    {'name': 'agentrouter', 'transport': 'codex',
+     'provider': 'agentrouter_main_20261109',
      'base_url': 'https://agentrouter.org/v1',
      'profiles': [('gpt-6-astra', 'relay-agentrouter'),
                   ('gpt-6.1-sol', 'relay-agentrouter-sol')]},
-    {'name': 'pincar', 'provider': 'pincar',
+    {'name': 'pincar', 'transport': 'codex',
+     'provider': 'pincar',
      'base_url': 'https://intl.freehyy.com',
      'profiles': [('gpt-6-astra', 'relay-pincar'),
                   ('gpt-6.1-sol', 'relay-pincar-sol')]},
+    # Google Gemini（官方 OpenAI 兼容层）。**没有 key 就自动跳过**，
+    # 不会给每次任务添乱。详见《谷歌渠道调研与使用指南.md》。
+    {'name': 'google', 'transport': 'http',
+     'base_url': 'https://generativelanguage.googleapis.com/v1beta/openai',
+     'api_key_env': 'GEMINI_API_KEY',
+     'profiles': [('gemini-3.8-flash', None),
+                  ('gemini-2.5-pro', None)]},
 ]
 
 # Errors that mean "this site is out of room; try the other one".
@@ -139,6 +162,43 @@ def run_codex(profile: str, prompt: str, timeout: int = 900) -> tuple[int, str]:
         return 127, 'codex executable not found'
 
 
+def run_http(model: str, base_url: str, prompt: str, api_key: str,
+             timeout: int = 900) -> tuple[int, str]:
+    """Call an OpenAI-compatible /chat/completions endpoint directly.
+
+    Used for channels that do NOT fingerprint the client (Google Gemini's
+    OpenAI-compatibility layer). Those have no /responses endpoint, so they
+    cannot be driven by the Codex client at all - but they do speak
+    chat.completions, which is all a distillation run needs.
+    """
+    try:
+        from openai import OpenAI
+    except ImportError as exc:
+        return 127, f'openai package not installed: {exc}'
+    try:
+        client = OpenAI(base_url=base_url, api_key=api_key, timeout=timeout)
+        resp = client.chat.completions.create(
+            model=model,
+            messages=[{'role': 'user', 'content': prompt}],
+        )
+        text = resp.choices[0].message.content or ''
+        return 0, text
+    except Exception as exc:
+        return 1, f'{type(exc).__name__}: {exc}'
+
+
+def site_ready(site: dict) -> tuple[bool, str]:
+    """Is this site usable right now?
+
+    A site that needs an env var we don't have is SKIPPED, not failed -
+    otherwise every task would burn a retry slot on it.
+    """
+    env = site.get('api_key_env')
+    if env and not os.environ.get(env):
+        return False, f'{env} 没设（跳过）'
+    return True, ''
+
+
 def strip_banner(text: str) -> str:
     """Codex exec prints a header block and a trailing 'tokens used' block.
 
@@ -161,8 +221,14 @@ def strip_banner(text: str) -> str:
     return '\n'.join(out).strip() or text.strip()
 
 
-def probe_site(profile: str) -> tuple[bool, str]:
-    rc, out = run_codex(profile, 'reply with the single word OK', timeout=180)
+def probe_site(site: dict, model: str, prof: str | None) -> tuple[bool, str]:
+    """Probe one (site, model) pair with a real request."""
+    if site.get('transport') == 'http':
+        key = os.environ.get(site.get('api_key_env', ''), '')
+        rc, out = run_http(model, site['base_url'],
+                           'reply with the single word OK', key, timeout=180)
+    else:
+        rc, out = run_codex(prof, 'reply with the single word OK', timeout=180)
     if rc == 0 and 'OK' in out:
         return True, 'alive'
     m = RETRYABLE.search(out)
@@ -181,11 +247,17 @@ def cmd_list(args) -> int:
     print('  separate budget pool PER MODEL - a site can 402 on astra while')
     print('  still serving sol. Measured 2026-11-11: exactly that happened.')
     print()
+    print('  transport: codex = 走真实 Codex 客户端（站点校验客户端指纹时必需）')
+    print('             http  = 走 OpenAI 兼容 chat.completions（普通 HTTP）')
+    print()
     for i, s in enumerate(SITES):
-        print(f'  {i + 1}. {s["name"]:14s} {s["base_url"]}')
+        ready, why = site_ready(s)
+        mark = '' if ready else f'   [不可用: {why}]'
+        print(f'  {i + 1}. {s["name"]:14s} {s["base_url"]}'
+              f'   transport={s.get("transport", "codex")}{mark}')
         for model, prof in s['profiles']:
             tag = '  <- shared model' if model == SHARED_MODEL else '  <- fallback'
-            print(f'       {model:14s} profile={prof:22s}{tag}')
+            print(f'       {model:16s} profile={str(prof):22s}{tag}')
     print()
     print('  Task file format: a .md file used verbatim as the prompt.')
     print('  Output goes next to it as <name>.out.md + <name>.meta.json')
@@ -198,19 +270,23 @@ def cmd_probe(args) -> int:
     print('=' * 74)
     alive = []
     for s in SITES:
+        ready, why = site_ready(s)
+        if not ready:
+            print(f'  {s["name"]:14s} {"SKIP":14s}  ({why})', flush=True)
+            continue
         for model, prof in s['profiles']:
             t0 = time.monotonic()
-            ok, why = probe_site(prof)
+            ok, why2 = probe_site(s, model, prof)
             dt = round(time.monotonic() - t0, 1)
-            print(f'  {s["name"]:14s} {model:14s} {"ALIVE" if ok else "DOWN "}  '
-                  f'({why}, {dt}s)', flush=True)
+            print(f'  {s["name"]:14s} {model:16s} {"ALIVE" if ok else "DOWN "}  '
+                  f'({why2}, {dt}s)', flush=True)
             if ok:
                 alive.append((s['name'], model, prof))
     print()
     if alive:
         print('  usable right now (in failover order):')
         for site, model, prof in alive:
-            print(f'     {site:14s} / {model:14s}  profile {prof}')
+            print(f'     {site:14s} / {model:16s}  profile {prof}')
     else:
         print('  usable right now: none - every pool is empty')
     return 0 if alive else 1
@@ -223,11 +299,18 @@ def cmd_task(args) -> int:
         return 1
     prompt = task.read_text(encoding='utf-8')
 
-    # Build the ordered list of (site, model, profile) to try.
+    # Build the ordered list of (site, model, profile, site_cfg) to try.
+    # Sites whose required env var is missing are skipped entirely -
+    # they must not burn a retry slot.
     pairs = []
+    skipped = []
     for s in SITES:
+        ready, why = site_ready(s)
+        if not ready:
+            skipped.append((s['name'], why))
+            continue
         for model, prof in s['profiles']:
-            pairs.append((s['name'], model, prof))
+            pairs.append((s['name'], model, prof, s))
     if args.first:
         pairs.sort(key=lambda p: 0 if p[0] == args.first else 1)
     if args.profile:
@@ -238,7 +321,9 @@ def cmd_task(args) -> int:
         print('DRY RUN')
         print('=' * 74)
         print(f'  task      : {task}')
-        print(f'  would try : {[(s, m) for s, m, _ in pairs]}')
+        print(f'  would try : {[(s, m) for s, m, _, _ in pairs]}')
+        for name, why in skipped:
+            print(f'  skipped   : {name}  ({why})')
         print(f'  effort    : {SHARED_EFFORT}')
         print(f'  prompt len: {len(prompt)} chars')
         print()
@@ -249,17 +334,26 @@ def cmd_task(args) -> int:
         return 0
 
     attempts = []
-    for site, model, prof in pairs:
-        print(f'--> trying {site} / {model} via profile {prof} ...', flush=True)
-        rc, out = run_codex(prof, prompt, timeout=args.timeout)
+    for site, model, prof, scfg in pairs:
+        transport = scfg.get('transport', 'codex')
+        if transport == 'http':
+            key = os.environ.get(scfg.get('api_key_env', ''), '')
+            print(f'--> trying {site} / {model} via http ({scfg["base_url"]}) ...',
+                  flush=True)
+            rc, out = run_http(model, scfg['base_url'], prompt, key,
+                               timeout=args.timeout)
+        else:
+            print(f'--> trying {site} / {model} via profile {prof} ...', flush=True)
+            rc, out = run_codex(prof, prompt, timeout=args.timeout)
         if rc == 0:
-            answer = strip_banner(out)
+            answer = strip_banner(out) if transport == 'codex' else out
             dest = task.with_suffix('.out.md')
             dest.write_text(answer, encoding='utf-8')
             meta = task.with_suffix('.meta.json')
             meta.write_text(json.dumps({
                 'task': str(task), 'site': site, 'profile': prof,
                 'model': model, 'effort': SHARED_EFFORT,
+                'transport': transport,
                 'at': time.strftime('%Y-%m-%d %H:%M:%S'),
                 'attempts': attempts + [{'site': site, 'model': model,
                                           'profile': prof, 'rc': rc}],
@@ -282,7 +376,7 @@ def cmd_task(args) -> int:
             reason = f'rc={rc}'
         print(f'    failed ({reason})', flush=True)
         attempts.append({'site': site, 'model': model, 'profile': prof,
-                         'rc': rc, 'reason': reason})
+                         'transport': transport, 'rc': rc, 'reason': reason})
         if not m and 'access denied' not in out.lower():
             print('    (not a quota problem - not retrying elsewhere)')
             break

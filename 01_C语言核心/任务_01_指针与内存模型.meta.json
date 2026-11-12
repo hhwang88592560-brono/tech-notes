@@ -1,0 +1,30 @@
+{
+  "generation_mode": "local_authored_and_reviewed",
+  "remote_distillation_succeeded": false,
+  "site": null,
+  "profile": null,
+  "model": null,
+  "effort": null,
+  "dispatcher_intended_model": "gpt-6-astra",
+  "dispatcher_intended_effort": "max",
+  "dispatcher_exit_code": 1,
+  "attempts": [
+    {"site": "agentrouter", "profile": "relay-agentrouter", "rc": 1},
+    {"site": "pincar", "profile": "relay-pincar", "rc": 1}
+  ],
+  "observed_local_error": "failed to initialize in-process app-server client: access denied (os error 5)",
+  "named_profiles_present_in_inspected_global_config": false,
+  "git_commit": "UNKNOWN (not a git repository)",
+  "task": "任务_01_指针与内存模型.md",
+  "output": "任务_01_指针与内存模型.out.md",
+  "verification_status_file": "01_指针与内存模型/verification_latest.json",
+  "provenance_notes": "01_指针与内存模型/90_验证记录.md",
+  "standard_primary_pdf_directly_verified": false,
+  "reference_cross_checks": [
+    "https://gcc.gnu.org/onlinedocs/gcc/Volatiles.html",
+    "https://gcc.gnu.org/onlinedocs/gcc/Qualifiers-implementation.html",
+    "https://www.cppreference.com/c/language/sizeof",
+    "https://www.cppreference.com/c/language/array",
+    "https://www.cppreference.com/c/language/function_declaration"
+  ]
+}

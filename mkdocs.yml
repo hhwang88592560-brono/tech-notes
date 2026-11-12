@@ -1,0 +1,127 @@
+# ============================================================
+# 技术蒸馏课程 —— 站点配置
+#
+# ★ 为什么是 docs_dir: docs 而不是 .（mkdocs 1.6 的硬性要求）★
+#   mkdocs 明确拒绝两种布局：
+#     - docs_dir 是配置文件所在目录的**父目录**
+#     - site_dir 在 docs_dir **里面**（会自己 copy 自己）
+#   所以站点源必须是配置文件的**子目录**。
+#
+#   于是：`sync_docs.py` 把课程内容同步到 `docs/`，
+#   `make_site_nav.py` 再从 `docs/` 生成 nav —— 两步都只认 docs/，
+#   保证"发布的东西"和"导航列的东西"永远是同一份。
+#
+#   源目录（01_.. 99_..）原样不动，所有 `技术蒸馏课程\99_工具与模板\...`
+#   这类路径引用**不会断**。代价是有一份纯文本副本（几十 KB）。
+#
+# ★ 质量闸：`mkdocs build --strict`
+#   链接坏了、nav 指向不存在的文件、警告 —— 一律直接失败。
+#   这是"能编译通过"那条纪律在文档上的对应物。
+#
+# nav 段由 `99_工具与模板/make_site_nav.py --write` 生成，别手改。
+# ============================================================
+
+site_name: 技术蒸馏课程
+site_description: C 语言与嵌入式 —— 从原始材料蒸馏成可执行的学习包
+site_author: hhwang88592560-brono
+
+docs_dir: docs
+site_dir: _site
+
+# ---------- 排除：docs/ 之内还要再挡一次的 ----------
+# （第一道防线在 sync_docs.py；这里是第二道，防止手工往 docs/ 里丢东西）
+exclude_docs: |
+  **/__pycache__/**
+  **/verification/**
+  **/学习周记/**
+  **/*.meta.json
+  **/*.exe
+  **/*.pyc
+  .git/**
+  .github/**
+
+# ---------- 主题 ----------
+theme:
+  name: material
+  language: zh
+  features:
+    - navigation.instant        # 左侧切换不整页刷新
+    - navigation.tracking       # URL 跟着滚动走
+    - navigation.top
+    - content.code.copy         # 代码块右上角一键复制
+    - content.code.annotate
+    - toc.follow
+    - search.suggest
+    - search.highlight
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: 切到暗色
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: 切到亮色
+  icon:
+    repo: fontawesome/brands/github
+
+# ---------- Markdown 扩展 ----------
+markdown_extensions:
+  - admonition          # !!! note / warning
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 3
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+# ---------- 附加 ----------
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/hhwang88592560-brono
+      name: GitHub
+
+nav:
+  - "总纲":
+      - "技术蒸馏课程 · 总纲": "index.md"
+  - "01_C语言核心":
+      - "00_导读": "01_C语言核心/01_指针与内存模型/00_导读.md"
+      - "10_要点": "01_C语言核心/01_指针与内存模型/10_要点.md"
+      - "20_动手": "01_C语言核心/01_指针与内存模型/20_动手.md"
+      - "30_自测": "01_C语言核心/01_指针与内存模型/30_自测.md"
+      - "生成与验证记录": "01_C语言核心/01_指针与内存模型/90_验证记录.md"
+      - "99_复盘模板": "01_C语言核心/01_指针与内存模型/99_复盘.md"
+      - "蒸馏一课：指针与内存模型（C 语言核心第 1 课）": "01_C语言核心/任务_01_指针与内存模型.md"
+      - "指针与内存模型 · C 语言核心第 1 课": "01_C语言核心/任务_01_指针与内存模型.out.md"
+  - "99_工具与模板":
+      - "All API Hub 安装 + 各站登录 URL 清单（照着点就行）": "99_工具与模板/AllAPIHub安装与登录清单.md"
+      - "DeepTutor 要不要升级？—— 1.7.2 评估与决策": "99_工具与模板/DeepTutor升级决策_1.7.2评估.md"
+      - "DeepTutor：近况 · 本地现状 · 穿透 · 部署": "99_工具与模板/DeepTutor现状与部署指南.md"
+      - "中转站管理 + AI/Agent 调度指南": "99_工具与模板/中转管理与AI调度指南.md"
+      - "蒸馏一课：C 语言与嵌入式": "99_工具与模板/提示词模板_标准课.md"
+      - "爬爬虾学习路线 · 任务与时间分配 + 手把手保姆级指南": "99_工具与模板/爬爬虾学习路线_任务与时间分配.md"
+      - "租服务器与资源利用指南（CPU / 网络 / GPU 怎么分，怎么和 API + 本机资源配合）": "99_工具与模板/租服务器与资源利用指南.md"
+      - "综合能力进步指南": "99_工具与模板/综合能力进步指南.md"
+      - "薅羊毛指南 · 公益中转 / 官方免费额度 / 自动签到": "99_工具与模板/薅羊毛指南_20261111.md"
+      - "视频课程蒸馏教程（B站 + 百度网盘本地文件）": "99_工具与模板/视频课程蒸馏教程.md"
+      - "课程流水线接入 DeepTutor · 保姆级教程": "99_工具与模板/课程流水线接入DeepTutor_保姆级.md"

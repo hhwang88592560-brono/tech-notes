@@ -1,0 +1,33 @@
+{
+  "at": "2026-11-11 20:39:08",
+  "rows": [
+    {
+      "site": "agentrouter",
+      "model": "gpt-6-astra",
+      "profile": "relay-agentrouter",
+      "status": "402 budget pool empty",
+      "seconds": 6.2
+    },
+    {
+      "site": "agentrouter",
+      "model": "gpt-6.1-sol",
+      "profile": "relay-agentrouter-sol",
+      "status": "ALIVE",
+      "seconds": 10.3
+    },
+    {
+      "site": "pincar",
+      "model": "gpt-6-astra",
+      "profile": "relay-pincar",
+      "status": "429 rate limited",
+      "seconds": 4.5
+    },
+    {
+      "site": "pincar",
+      "model": "gpt-6.1-sol",
+      "profile": "relay-pincar-sol",
+      "status": "429 rate limited",
+      "seconds": 3.4
+    }
+  ]
+}

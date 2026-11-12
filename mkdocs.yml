@@ -88,7 +88,13 @@ markdown_extensions:
       pygments_lang_class: true
   - pymdownx.inlinehilite
   - pymdownx.snippets
-  - pymdownx.superfences
+  # ★ mermaid 图：默认 superfences 会把它当普通代码块，
+  #   要渲染成图必须注册 custom_fence
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.tasklist:
@@ -100,6 +106,10 @@ extra:
     - icon: fontawesome/brands/github
       link: https://github.com/hhwang88592560-brono
       name: GitHub
+
+extra_javascript:
+  - https://unpkg.com/mermaid@11/dist/mermaid.min.js
+  - assets/javascripts/mermaid.js
 
 nav:
   - "总纲":

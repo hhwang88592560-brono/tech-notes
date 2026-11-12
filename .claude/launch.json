@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "course-site",
+      "runtimeExecutable": "C:\\Users\\18798\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "runtimeArgs": ["-m", "mkdocs", "serve", "-a", "127.0.0.1:8099"],
+      "port": 8099
+    }
+  ]
+}
